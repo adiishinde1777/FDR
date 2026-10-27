@@ -8,6 +8,8 @@ import { correlationIdMiddleware } from './middleware/correlationId';
 import { apiRateLimiter } from './middleware/rateLimiter';
 import { authenticate } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
+import path from 'path';
+import fs from 'fs';
 
 // Import route modules
 import authRouter from './modules/auth/auth.router';
@@ -147,6 +149,43 @@ app.use(`${prefix}/notifications`, notificationsRouter);
 app.use(`${prefix}/reports`, reportsRouter);
 app.use(`${prefix}/audit`, auditRouter);
 app.use(`${prefix}/integrations`, integrationsRouter);
+
+// Serve frontend static assets in production
+const frontendDistCandidates = [
+  path.resolve(__dirname, '../../frontend/dist'),
+  path.resolve(process.cwd(), 'frontend/dist'),
+  path.resolve(process.cwd(), '../frontend/dist'),
+];
+
+let frontendDistPath: string | null = null;
+for (const candidate of frontendDistCandidates) {
+  if (fs.existsSync(candidate) && fs.existsSync(path.join(candidate, 'index.html'))) {
+    frontendDistPath = candidate;
+    break;
+  }
+}
+
+if (frontendDistPath) {
+  app.use(express.static(frontendDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDistPath!, 'index.html'));
+  });
+} else {
+  // If frontend is not built, provide a helpful default response on root
+  app.get('/', (req, res) => {
+    res.json({
+      status: 'ONLINE',
+      service: 'AICTE Security Deposit / FDR Management Portal API',
+      version: '1.0.0',
+      swaggerDocs: '/api/docs',
+      healthCheck: '/api/health',
+      apiPrefix: env.API_PREFIX,
+    });
+  });
+}
 
 // Centralized error handler
 app.use(errorHandler);
