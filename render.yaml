@@ -1,0 +1,31 @@
+services:
+  # Backend API Web Service
+  - type: web
+    name: aicte-fdr-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: file:./dev.db
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CSRF_SECRET
+        generateValue: true
+
+  # Frontend React SPA Static Site
+  - type: web
+    name: aicte-fdr-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
