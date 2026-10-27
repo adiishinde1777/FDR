@@ -1,0 +1,318 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               String                 @id @default(uuid())
+  email            String                 @unique
+  passwordHash     String
+  fullName         String
+  role             String                 // SUPER_ADMIN, INSTITUTION_ADMIN, INSTITUTION_STAFF, VERIFICATION_OFFICER, APPROVING_AUTHORITY, AUDITOR
+  phone            String?
+  isActive         Boolean                @default(true)
+  lastLoginAt      DateTime?
+  passwordResetToken String?
+  passwordResetExpires DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  memberships      InstitutionMembership[]
+  assignedVerifications VerificationCase[] @relation("AssignedOfficer")
+  approvalDecisions ApprovalDecision[]
+  notifications    Notification[]
+  auditEvents      AuditEvent[]
+}
+
+model Institution {
+  id                 String                 @id @default(uuid())
+  officialIdentifier String                 @unique
+  name               String
+  address            String
+  state              String
+  district           String
+  pinCode            String
+  contactEmail       String
+  contactPhone       String
+  approvalReference  String
+  accountStatus      String                 @default("PENDING_APPROVAL")
+  registrationDate   DateTime               @default(now())
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  memberships        InstitutionMembership[]
+  securityDeposits   SecurityDeposit[]
+  fdrs               FDRRecord[]
+  documents          Document[]
+  releaseRequests    ReleaseRefundRequest[]
+}
+
+model InstitutionMembership {
+  id            String      @id @default(uuid())
+  userId        String
+  institutionId String
+  roleInInst    String      @default("ADMIN")
+  createdAt     DateTime    @default(now())
+
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, institutionId])
+}
+
+model SecurityDeposit {
+  id               String                 @id @default(uuid())
+  institutionId    String
+  depositReference String                 @unique
+  programCategory  String
+  requiredAmount   Decimal                @db.Decimal(14, 2)
+  currency         String                 @default("INR")
+  status           String                 @default("ACTIVE")
+  approvedAt       DateTime?
+  notes            String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  institution      Institution            @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  fdrs             FDRRecord[]
+  releaseRequests  ReleaseRefundRequest[]
+}
+
+model FDRRecord {
+  id                   String                 @id @default(uuid())
+  institutionId        String
+  securityDepositId    String?
+  fdrNumber            String
+  issuingBank          String
+  bankBranch           String
+  ifscCode             String?
+  depositAmount        Decimal                @db.Decimal(14, 2)
+  currency             String                 @default("INR")
+  issueDate            DateTime
+  maturityDate         DateTime
+  validityDate         DateTime?
+  jointName            String?
+  accountStatus        String                 @default("DRAFT")
+  verificationStatus   String                 @default("NOT_SUBMITTED")
+  autoRenewal          Boolean                @default(false)
+  notes                String?
+  isPotentialDuplicate Boolean                @default(false)
+  duplicateNotes       String?
+  createdById          String
+  updatedById          String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  institution          Institution            @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  securityDeposit      SecurityDeposit?       @relation(fields: [securityDepositId], references: [id], onDelete: SetNull)
+  documents            Document[]
+  verificationCases    VerificationCase[]
+  approvalCases        ApprovalCase[]
+  ocrResults           OCRResult[]
+  releaseRequests      ReleaseRefundRequest[]
+  oldInRenewals        RenewalRequest[]       @relation("OldFDR")
+  newInRenewals        RenewalRequest[]       @relation("NewFDR")
+
+  @@index([fdrNumber])
+  @@index([institutionId])
+  @@index([accountStatus])
+}
+
+model Document {
+  id                 String       @id @default(uuid())
+  institutionId      String
+  fdrId              String?
+  documentType       String
+  originalFilename   String
+  storagePath        String
+  mimeType           String
+  fileSize           Int
+  checksumSha256     String
+  uploadedById       String
+  version            Int          @default(1)
+  isArchived         Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  institution        Institution  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  fdr                FDRRecord?   @relation(fields: [fdrId], references: [id], onDelete: SetNull)
+  ocrResult          OCRResult?
+}
+
+model OCRResult {
+  id                   String     @id @default(uuid())
+  documentId           String     @unique
+  fdrId                String
+  extractedFdrNumber   String?
+  extractedBankName    String?
+  extractedAmount      Decimal?   @db.Decimal(14, 2)
+  extractedIssueDate   DateTime?
+  extractedMaturityDate DateTime?
+  rawText              String?
+  status               String     @default("PENDING")
+  confidenceScore      Float?
+  mismatchFlags        String?
+  reviewerConfirmed    Boolean    @default(false)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  document             Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  fdr                  FDRRecord  @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+}
+
+model VerificationCase {
+  id                            String                    @id @default(uuid())
+  fdrId                         String
+  assignedOfficerId             String?
+  status                        String                    @default("PENDING")
+  externalVerificationType      String                    @default("NOT_APPLICABLE")
+  externalVerificationReference String?
+  externalVerificationNotes     String?
+  outcome                       String                    @default("PENDING")
+  createdAt                     DateTime                  @default(now())
+  updatedAt                     DateTime                  @updatedAt
+
+  fdr                           FDRRecord                 @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  assignedOfficer               User?                     @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id], onDelete: SetNull)
+  observations                  VerificationObservation[]
+}
+
+model VerificationObservation {
+  id               String           @id @default(uuid())
+  caseId           String
+  officerId        String
+  observationType  String
+  fieldName        String?
+  enteredValue     String?
+  observedValue    String?
+  remarks          String
+  isResolved       Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+
+  verificationCase VerificationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+model ApprovalCase {
+  id                 String             @id @default(uuid())
+  fdrId              String
+  stage              String             @default("STAGE_1_SCRUTINY")
+  status             String             @default("PENDING")
+  currentApproverRole String            @default("APPROVING_AUTHORITY")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  fdr                FDRRecord          @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+  decisions          ApprovalDecision[]
+}
+
+model ApprovalDecision {
+  id             String        @id @default(uuid())
+  caseId         String
+  approverId     String
+  decision       String
+  previousStatus String
+  newStatus      String
+  remarks        String
+  reason         String?
+  createdAt      DateTime      @default(now())
+
+  approvalCase   ApprovalCase  @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  approver       User          @relation(fields: [approverId], references: [id], onDelete: Cascade)
+}
+
+model RenewalRequest {
+  id              String      @id @default(uuid())
+  oldFdrId        String
+  newFdrId        String?
+  institutionId   String
+  reason          String
+  status          String      @default("SUBMITTED")
+  submissionDate  DateTime    @default(now())
+  reviewerRemarks String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  oldFdr          FDRRecord   @relation("OldFDR", fields: [oldFdrId], references: [id], onDelete: Cascade)
+  newFdr          FDRRecord?  @relation("NewFDR", fields: [newFdrId], references: [id], onDelete: SetNull)
+}
+
+model ReleaseRefundRequest {
+  id                          String          @id @default(uuid())
+  requestNumber               String          @unique
+  institutionId               String
+  securityDepositId           String
+  fdrId                       String
+  requestType                 String
+  requestDate                 DateTime        @default(now())
+  requestedAmount             Decimal         @db.Decimal(14, 2)
+  reason                      String
+  conditionChecklist          String
+  status                      String          @default("SUBMITTED")
+  externalSettlementReference String?
+  decisionRemarks             String?
+  decidedById                 String?
+  closedAt                    DateTime?
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
+
+  institution                 Institution     @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  securityDeposit             SecurityDeposit @relation(fields: [securityDepositId], references: [id], onDelete: Cascade)
+  fdr                         FDRRecord       @relation(fields: [fdrId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id                  String   @id @default(uuid())
+  userId              String
+  title               String
+  message             String
+  type                String
+  priority            String   @default("NORMAL")
+  relatedResourceId   String?
+  relatedResourceType String?
+  isRead              Boolean  @default(false)
+  emailSent           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id            String   @id @default(uuid())
+  actorId       String?
+  actorEmail    String?
+  actorRole     String?
+  action        String
+  resourceType  String
+  resourceId    String?
+  details       String?
+  ipAddress     String?
+  correlationId String?
+  createdAt     DateTime @default(now())
+
+  user          User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model MaturityScheduleJob {
+  id                String    @id @default(uuid())
+  jobType           String
+  targetDate        DateTime
+  fdrId             String
+  status            String    @default("PENDING")
+  reminderSentDays  Int
+  executedAt        DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@unique([fdrId, reminderSentDays])
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}

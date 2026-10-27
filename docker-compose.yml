@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aicte_fdr_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: aicte_user
+      POSTGRES_PASSWORD: secure_db_password_2026
+      POSTGRES_DB: aicte_fdr_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicte_user -d aicte_fdr_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aicte_fdr_backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://aicte_user:secure_db_password_2026@postgres:5432/aicte_fdr_db?schema=public"
+      SESSION_SECRET: "aicte_super_secret_session_key_production_grade_random_938472910"
+      CSRF_SECRET: "aicte_csrf_token_secret_key_8372918374928"
+      UPLOAD_STORAGE_DIR: "/app/storage/documents"
+      SCHEDULER_ENABLED: "true"
+      APP_URL: "http://localhost:5173"
+    ports:
+      - "5000:5000"
+    volumes:
+      - document_storage:/app/storage/documents
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aicte_fdr_frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres_data:
+  document_storage:

@@ -1,0 +1,28 @@
+{
+  "name": "aicte-fdr-management-portal",
+  "version": "1.0.0",
+  "description": "AICTE Security Deposit / FDR Management Portal - Full-Stack Application",
+  "scripts": {
+    "dev": "concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build:frontend": "npm run build --prefix frontend",
+    "build": "npm run build:backend ; npm run build:frontend",
+    "test": "npm run test --prefix backend",
+    "seed": "npm run db:seed --prefix backend",
+    "db:push": "npm run db:push --prefix backend"
+  },
+  "keywords": [
+    "aicte",
+    "fdr",
+    "security-deposit",
+    "portal",
+    "fullstack"
+  ],
+  "author": "AICTE Approval Bureau",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}
